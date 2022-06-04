@@ -85,7 +85,6 @@ namespace Txtai
         /// <summary>
         /// Build instances from two main depedencies to make requests.
         /// This is to work globally without DI Service, to use an ASP.Net for example,
-        /// <see cref="TxtaiServiceCollection"/>
         /// </summary>
         /// <param name="uri"></param>
         /// <returns>Main dependencies for all request.</returns>
@@ -99,17 +98,69 @@ namespace Txtai
         /// <summary>
         /// Build instances from two main depedencies to make requests.
         /// This is to work globally without DI Service, to use an ASP.Net for example,
-        /// <see cref="TxtaiServiceCollection"/>
+        /// There is risk with <see cref="HttpClient"/> lifecycle managment.
         /// </summary>
         /// <param name="uri"></param>
         /// <returns>Main dependencies for all request.</returns>
-        public static (HttpClient Client, IApiSerializer Serializer) ResolveDependecies(string uri, Action<HttpClient> configureClient)
+        public static (HttpClient Client, IApiSerializer Serializer) ResolveDependecies(string uri, Action<HttpClient> configureClient = null)
         {
             var client = new HttpClient { BaseAddress = new Uri(uri) };
-            configureClient(client);
+            if(configureClient is not null) 
+                configureClient(client);
             var serializer = new JsonApiSerializer();
             return (client, serializer);
         }
 
+        /// <summary>
+        /// Build a instance of txtai client using uri and optional callback to configure
+        /// http client.
+        /// There is risk with <see cref="HttpClient"/> lifecycle managment.
+        /// </summary>
+        /// <param name="uri"></param>
+        /// <returns>Main dependencies for all request.</returns>
+        public static TxtaiClient CreateClient(string uri, Action<HttpClient> configureClient = null)
+        {
+            return new TxtaiClient(uri, configureClient);
+        }
+    }
+
+    /// <summary>
+    /// A class to build request object to use txtai backend.
+    /// There is risk with <see cref="HttpClient"/> lifecycle managment.
+    /// Care about the memory runtime when use HttpClient created manually.
+    /// </summary>
+    public class TxtaiClient
+    {
+        public TxtaiClient(string txtaiUrl)
+        {
+            (Client, Serializer) = Api.ResolveDependecies(txtaiUrl);
+        }
+
+        public TxtaiClient(string txtaiUrl, Action<HttpClient> configure)
+        {
+            (Client, Serializer) = Api.ResolveDependecies(txtaiUrl, configure);
+        }
+
+        public TxtaiClient(HttpClient client)
+        {
+            Client = client ?? throw new ArgumentNullException(nameof(client));
+            Serializer = new JsonApiSerializer();
+        }
+
+        public TxtaiClient(HttpClient client, IApiSerializer serializer)
+        {
+            Client = client ?? throw new ArgumentNullException(nameof(client));
+            Serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+        }
+
+        public HttpClient Client { get; set; }
+
+        public IApiSerializer Serializer { get; set; }
+
+        public TRequest Create<TRequest>()
+            where TRequest : RequestBase
+        {
+            return (TRequest)Activator.CreateInstance(typeof(TRequest), Client, Serializer);
+        }
     }
 }
